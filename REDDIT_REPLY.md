@@ -6,4 +6,4 @@ The recovery used the **official WIN 60 SE V0.1.0.1 firmware** (`C002P004_WIN60S
 
 **Recovery guide and inspectable flasher:** https://github.com/Hardboiledegg052/aula-win60-se-recovery
 
-The official firmware BIN isn't rehosted; request that exact file from AULA. If you share your USB VID/PID and board ID (but **not your device serial number**), we can check whether the guide applies.
+The repository now includes the exact manufacturer BIN used in this recovery, but **do not flash it unless the live board ID matches `0x0204010440000000`**. The recovery tool checks the board ID and BIN hash before writing. If you share your USB VID/PID and board ID (but **not your device serial number**), we can check whether the guide applies.
