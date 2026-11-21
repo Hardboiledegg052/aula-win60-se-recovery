@@ -19,9 +19,15 @@ Community-documented USB bootloader recovery for **one confirmed AULA WIN 60 SE 
 
 **A matching USB VID/PID is necessary but NOT sufficient.** You must connect with the flasher and confirm the **exact eight-byte board ID** and bootloader mode before it enables writing. Do not assume firmware is interchangeable between similarly named AULA keyboards.
 
-## Required firmware (not redistributed here)
+## Required firmware (included for this exact board)
 
-Obtain the firmware for your exact model from the **official AULA HUB update service** or request it from AULA support. The specific firmware that restored the keyboard was listed as:
+The unmodified manufacturer BIN that restored the keyboard is available here:
+
+**[Download WIN 60 SE V0.1.0.1 firmware](C002P004_WIN60SE_AppPacket_v0.1.0.1_20260929_a.bin)** — on GitHub, select **Download raw** to save the `.bin` file.
+
+This is the firmware listed by the **official AULA HUB update service** for this exact model and board revision. AULA owns the manufacturer firmware; including the file here does **not** imply AULA endorses this unofficial recovery tool. You may also request the firmware directly from AULA support.
+
+Verify the download against these details before use:
 
 ```
 C002P004_WIN60SE_AppPacket_v0.1.0.1_20260929_a.bin
@@ -40,7 +46,7 @@ For verification, this BIN begins with a packet header: bytes at offset `0x04` a
 **Risk warning:** Firmware writes can irreversibly damage a device, especially if power is lost or protocol assumptions differ between revisions. The flasher was tested with a simulated HID device and **one real keyboard recovery**. Proceed at your own risk; seek official support when possible.
 
 1. Confirm that Windows still detects the keyboard as `USB\VID_38A6&PID_291A`. If it does not enumerate, **stop**; these steps have not been validated for that failure mode.
-2. Obtain the exact BIN described above from AULA. Verify its filename, size and SHA-256.
+2. Download the included BIN above (or obtain the same file directly from AULA). Verify its filename, size and SHA-256.
 3. Close AULA HUB and any other program using the keyboard's vendor HID interface.
 4. Open [`WIN60_SE_PhotonLink_Guarded_Flasher.html`](WIN60_SE_PhotonLink_Guarded_Flasher.html) locally in the current version of **Microsoft Edge** or **Google Chrome** on Windows 11.
 5. Click **Connect keyboard**, select the matching `38A6:291A` device, then click **Read board ID and bootloader mode**.
@@ -79,4 +85,4 @@ The source is inspectable in the HTML file. There is no downloaded executable, s
 
 If reporting an issue, include the *model name*, *VID/PID*, *board ID*, *run mode*, *firmware hash* and *non-sensitive error messages*. **Remove keyboard serial numbers, Windows device instance IDs, and identifying paths** from any screenshots or logs you share publicly.
 
-Manufacturer firmware is not included in this repository. Obtain it directly from AULA, and follow its support guidance if your board identifiers are different.
+The manufacturer firmware is included **unchanged** only for the matching board revision. All manufacturer rights remain with AULA. If your board identifiers differ, do not use this BIN; request the appropriate version from AULA support.
