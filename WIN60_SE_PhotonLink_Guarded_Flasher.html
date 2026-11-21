@@ -24,7 +24,7 @@ progress{width:100%;height:20px;accent-color:#5a94f0}small{color:#b3c2d6}
 <body><main><div class="card">
 <h1>WIN 60 SE — PhotonLink Recovery</h1>
 <p class="muted">USB bootloader writer for the exact <span class="pill">38A6:291A</span> / <span class="pill">FF00:0001</span> interface. Uses commands recovered from AULA HUB's PhotonLink 1.6.1 SDK.</p>
-<div class="notice"><b>Important:</b> This is an <b>experimental, independently developed</b> utility, not AULA's official flasher. It has been tested with a simulated USB device, <b>not with a real firmware write</b>. Writing can permanently damage the keyboard. It accepts only the exact manufacturer-hosted WIN 60 SE V0.1.0.1 file matched to the board ID; it rejects the old WIN60HE_STANDARD_RAW.bin.</div>
+<div class="notice"><b>Important:</b> This is an <b>experimental, independently developed</b> utility, not AULA's official flasher. It passed simulated USB tests and has <b>one user-confirmed real-world recovery</b> on the exact board ID. It is not validated on other keyboards or revisions. Writing can permanently damage the keyboard. It accepts only the exact manufacturer-hosted WIN 60 SE V0.1.0.1 file matched to the board ID; it rejects the old WIN60HE_STANDARD_RAW.bin.</div>
 
 <h2>1 — Identify your keyboard</h2>
 <div class="row"><button id="connect">Connect keyboard</button><button id="probe" disabled>Read board ID and bootloader mode</button></div>
@@ -36,7 +36,7 @@ progress{width:100%;height:20px;accent-color:#5a94f0}small{color:#b3c2d6}
 <div class="notice">The included firmware was listed by AULA's update service for <b>WIN 60 SE</b>. Its embedded board ID matches <b>0x0204010440000000</b>. The flasher checks the exact SHA-256 hash, file length, signature, and embedded board ID. <b>Every other BIN is rejected.</b></div>
 
 <h2>3 — Explicit approval before writing</h2>
-<label><input id="confirmed" type="checkbox"> I understand that this recovery flasher has not been tested on real hardware, and I authorize writing the exact manufacturer-hosted BIN to the matching board.</label>
+<label><input id="confirmed" type="checkbox"> I understand that this independent recovery flasher has only one confirmed real-world success and may damage other boards, and I authorize writing the exact manufacturer-hosted BIN to the matching board.</label>
 <label for="typed">Type <span class="pill">WRITE 0x0204010440000000</span> to authorize the operation:</label>
 <input id="typed" type="text" autocomplete="off" spellcheck="false">
 <label><input id="reboot" type="checkbox" checked> Ask the keyboard to restart into application mode if firmware verification succeeds.</label>
@@ -148,7 +148,7 @@ async function readBin(event){
     el('binInfo').textContent=`${file.name} · ${bytes.length} bytes · SHA-256 ${sha}`;
     log('Loaded BIN: '+file.name+' ('+bytes.length+' bytes)');
     if(blocked){log('REJECTED: file does not match the exact approved WIN 60 SE V0.1.0.1 firmware hash and header. No write is allowed.');}
-    else log('APPROVED FILE MATCH: exact official update-service SHA-256, size, header, and 8-byte board ID verified. Real hardware writing remains untested.');
+    else log('APPROVED FILE MATCH: exact official update-service SHA-256, size, header, and 8-byte board ID verified. This utility has one user-confirmed hardware recovery; proceed at your own risk.');
   }catch(e){blocked=true;el('binInfo').textContent='Could not prepare BIN: '+(e.message||e);log('File read failed: '+(e.message||e));}
   canWrite();
 }
