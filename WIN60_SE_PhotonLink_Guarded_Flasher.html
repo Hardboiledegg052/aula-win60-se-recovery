@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WIN 60 SE — PhotonLink Recovery Flasher</title>
+<style>
+:root{font:15px/1.55 system-ui,Segoe UI,sans-serif;color-scheme:dark;color:#eaf0fa;background:#101827}
+body{margin:0;padding:24px 14px}main{max-width:780px;margin:auto}
+h1{font-size:1.55rem;margin:0 0 6px}h2{font-size:1.04rem;margin:25px 0 9px}
+p{margin:10px 0}.muted{color:#b3c2d6}.card{background:#1b283b;border:1px solid #39506c;padding:24px;border-radius:16px}
+.notice{padding:13px 15px;border-radius:9px;border:1px solid #ae8b40;background:#41351e;color:#ffebbf;margin:17px 0}
+.good{color:#9af3c7}.bad{color:#ffb4ac}.pill{background:#2d4560;border-radius:5px;padding:2px 6px;font-family:ui-monospace,Consolas,monospace}
+button{background:#487bdf;color:white;font:inherit;font-weight:650;border:0;border-radius:9px;padding:10px 15px;cursor:pointer}
+button:hover:enabled{background:#6294f7}button:disabled{opacity:.5;cursor:not-allowed}
+input[type=file]{display:block;max-width:100%;margin:10px 0}input[type=text]{width:100%;max-width:520px;box-sizing:border-box;background:#101c2c;color:white;border:1px solid #647b9b;border-radius:7px;padding:10px;font:inherit}
+input[type=checkbox]{accent-color:#669aff;transform:scale(1.15)}label{display:block;margin:11px 0}
+.danger{background:#b22f42}.danger:hover:enabled{background:#dc4357}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0}
+pre{background:#0c1422;border:1px solid #364a64;border-radius:10px;padding:14px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:330px;overflow:auto}
+progress{width:100%;height:20px;accent-color:#5a94f0}small{color:#b3c2d6}
+</style>
+</head>
+<body><main><div class="card">
+<h1>WIN 60 SE — PhotonLink Recovery</h1>
+<p class="muted">USB bootloader writer for the exact <span class="pill">38A6:291A</span> / <span class="pill">FF00:0001</span> interface. Uses commands recovered from AULA HUB's PhotonLink 1.6.1 SDK.</p>
+<div class="notice"><b>Important:</b> This is an <b>experimental, independently developed</b> utility, not AULA's official flasher. It has been tested with a simulated USB device, <b>not with a real firmware write</b>. Writing can permanently damage the keyboard. It accepts only the exact manufacturer-hosted WIN 60 SE V0.1.0.1 file matched to the board ID; it rejects the old WIN60HE_STANDARD_RAW.bin.</div>
+
+<h2>1 — Identify your keyboard</h2>
+<div class="row"><button id="connect">Connect keyboard</button><button id="probe" disabled>Read board ID and bootloader mode</button></div>
+<p id="deviceInfo" class="muted">Not connected. Close AULA HUB and other software using this device before connecting.</p>
+
+<h2>2 — Select the verified WIN 60 SE firmware</h2>
+<label for="bin">Choose the included <code>C002P004_WIN60SE_AppPacket_v0.1.0.1_20260929_a.bin</code> file:</label><input id="bin" type="file" accept=".bin,application/octet-stream">
+<p id="binInfo" class="muted">No BIN selected.</p>
+<div class="notice">The included firmware was listed by AULA's update service for <b>WIN 60 SE</b>. Its embedded board ID matches <b>0x0204010440000000</b>. The flasher checks the exact SHA-256 hash, file length, signature, and embedded board ID. <b>Every other BIN is rejected.</b></div>
+
+<h2>3 — Explicit approval before writing</h2>
+<label><input id="confirmed" type="checkbox"> I understand that this recovery flasher has not been tested on real hardware, and I authorize writing the exact manufacturer-hosted BIN to the matching board.</label>
+<label for="typed">Type <span class="pill">WRITE 0x0204010440000000</span> to authorize the operation:</label>
+<input id="typed" type="text" autocomplete="off" spellcheck="false">
+<label><input id="reboot" type="checkbox" checked> Ask the keyboard to restart into application mode if firmware verification succeeds.</label>
+<button id="flash" class="danger" disabled>Write selected firmware to keyboard</button>
+<p><small>The Write button becomes available only after the selected file matches the approved SHA-256 hash and firmware header, the live keyboard reports bootloader mode 0 and the matching board ID, and you explicitly confirm the risks.</small></p>
+
+<h2>Progress and diagnostic log</h2>
+<progress id="progress" max="100" value="0"></progress><p id="progressText" class="muted">0%</p>
+<pre id="log" role="status" aria-live="polite">Ready. Nothing has been written.</pre>
+<div class="row"><button id="save">Save log</button></div>
+<p class="muted"><small>No network requests or data uploads. The firmware bytes are sent only to the selected local HID device. Use Chrome or Edge on Windows 11. Never unplug the USB cable while a write is in progress.</small></p>
+</div></main>
+<script>
+'use strict';
+const EXPECTED_BOARD='0x0204010440000000';
+const APPROVED_SHA='99fa9df5f59ce752ab1bdf208f6144c1b5c2dcc4455bbdd69831d57285a4db9b';
+const APPROVED_SIZE=104632;
+const VID=0x38a6, PID=0x291a, USAGE_PAGE=0xff00, USAGE=1;
+const BAD_HASHES=new Set([
+  // WIN60HE_STANDARD_RAW.bin (the user's 2026-11-21 upload; 2024 legacy, bitwise inverted).
+  'e6db127f7d661a70e5d0e24477b24be51144f02ffed61f7186fdea765b45c835',
+  // Decoded image extracted from the older 2E3C:C365 updater.
+  '6f91eaacb3304ef85a0e90f5ca3be38aff1d469952c02d8ed6af2e4be35ba03f'
+]);
+const STATUS={0:'OK',1:'LEGACY_ERROR',2:'APP_INCOMPATIBLE',3:'HEADER_INVALID',4:'CRC_MISMATCH',5:'TRUNCATED',6:'FLASH_FAILED',7:'COMMIT_FAILED',8:'BOARD_MISMATCH',9:'ID_INVALID',10:'BOUNDS_INVALID'};
+const el=id=>document.getElementById(id);
+const hex=b=>Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
+function validFirmwareHeader(bytes){
+  if(bytes.length!==APPROVED_SIZE||hex(bytes.subarray(4,8))!=='5abcdc5a')return false;
+  // The firmware header stores each of the two board-ID words little-endian.
+  // Reverse bytes within each word to compare against the live SYNC board ID.
+  const normalized=new Uint8Array(8);
+  for(let i=0;i<8;i+=4)for(let j=0;j<4;j++)normalized[i+j]=bytes[8+i+3-j];
+  return '0x'+hex(normalized)===EXPECTED_BOARD;
+}
+const writeLog=[];
+const log=(s)=>{const line='['+new Date().toLocaleTimeString()+'] '+s;writeLog.push(line);el('log').textContent+= '\n'+line;el('log').scrollTop=el('log').scrollHeight;};
+let dev=null, info=null, imageBytes=null, imageSha=null, blocked=false, busy=false;
+const session=(()=>{const a=new Uint8Array(1);crypto.getRandomValues(a);return a[0]%254+1})();
+const hardwareMatches=d=>d.vendorId===VID&&d.productId===PID&&d.collections.some(c=>c.usagePage===USAGE_PAGE&&c.usage===USAGE);
+function canWrite(){
+  const valid=!!(dev?.opened && info && info.boardID===EXPECTED_BOARD && info.runMode===0 && imageBytes && !blocked && !busy && el('confirmed').checked && el('typed').value.trim()===`WRITE ${EXPECTED_BOARD}`);
+  el('flash').disabled=!valid;
+}
+function disableWhileBusy(v){busy=v;el('connect').disabled=v;el('probe').disabled=v||!dev?.opened;el('bin').disabled=v;el('save').disabled=false;canWrite();}
+function setProgress(done,total){let pct=total?Math.floor(done*100/total):0;el('progress').value=pct;el('progressText').textContent=pct+'% ('+done+' / '+total+' bytes)';}
+
+async function askDevice(){
+  if(!('hid' in navigator)){log('WebHID not available: open in current Chrome/Edge.');return;}
+  try{
+    const items=await navigator.hid.requestDevice({filters:[{vendorId:VID,productId:PID}]});
+    const found=items.find(hardwareMatches);
+    if(!found){log('No selected 38A6:291A interface with FF00:0001. Stopped.');return;}
+    if(!found.opened)await found.open();
+    dev=found;info=null;el('probe').disabled=false;
+    el('deviceInfo').textContent='Connected: '+(dev.productName||'WIN 60 SE')+'. Read mode to continue.';
+    log('HID opened. No firmware written.');canWrite();
+  }catch(e){log('Connect failed: '+(e.message||e));}
+}
+
+// Each 64-byte HID report uses a non-zero software session byte. This is NOT the HID report ID.
+async function exchange(command,subcommand,payload=[],timeout=6000){
+  if(!dev?.opened)throw Error('HID is disconnected');
+  if(payload.length>61)throw Error('Packet payload is too long');
+  const request=new Uint8Array(64);
+  request[0]=session;request[1]=command;request[2]=subcommand;request.set(payload,3);
+  return await new Promise((resolve,reject)=>{
+    let finished=false;
+    function cleanup(){clearTimeout(timer);dev.removeEventListener('inputreport',onReply);}
+    function fail(err){if(finished)return;finished=true;cleanup();reject(err);}
+    function onReply(evt){
+      if(evt.device!==dev)return;
+      const p=new Uint8Array(evt.data.buffer,evt.data.byteOffset,evt.data.byteLength);
+      if(p.length<4||p[0]!==session||p[1]!==command||p[2]!==subcommand)return;
+      if(finished)return;finished=true;cleanup();resolve(new Uint8Array(p));
+    }
+    const timer=setTimeout(()=>fail(Error('No matching HID reply within '+timeout/1000+' seconds')),timeout);
+    dev.addEventListener('inputreport',onReply);
+    dev.sendReport(0,request).catch(fail);
+  });
+}
+async function sync(){
+  const p=await exchange(1,1,[],5500);
+  if(p.length<48)throw Error('Short SYNC report');
+  const boardID='0x'+hex(p.slice(3,11));
+  return{boardID,boardSN:new TextDecoder().decode(p.slice(11,43)).replace(/\0/g,'').trim(),runMode:p[43],version:Array.from(p.slice(44,48)).join('.'),raw:hex(p)};
+}
+async function probe(){
+  el('probe').disabled=true;info=null;canWrite();
+  try{
+    const found=await sync();info=found;
+    log('SYNC board ID: '+found.boardID+' | mode: '+found.runMode+' | boot/app version: '+found.version);
+    log('SYNC raw: '+found.raw);
+    if(found.boardID!==EXPECTED_BOARD){blocked=true;log('WRITING BLOCKED: unexpected board ID.');}
+    if(found.runMode!==0)log('WRITING BLOCKED: not in bootloader mode (0).');
+    el('deviceInfo').textContent=`Board ${found.boardID} · mode ${found.runMode===0?'BOOTLOADER':found.runMode+' (not bootloader)'} · version ${found.version}`;
+  }catch(e){log('SYNC failed: '+(e.message||e));el('deviceInfo').textContent='Unable to identify bootloader. No writes allowed.';}
+  finally{el('probe').disabled=false;canWrite();}
+}
+async function readBin(event){
+  imageBytes=null;imageSha=null;blocked=false;canWrite();setProgress(0,0);
+  const file=event.target.files?.[0];if(!file){el('binInfo').textContent='No BIN selected.';return;}
+  try{
+    if(file.size!==APPROVED_SIZE)throw Error('Unapproved firmware length. Expected exactly '+APPROVED_SIZE+' bytes.');
+    const bytes=new Uint8Array(await file.arrayBuffer());
+    const sha=hex(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)));
+    imageBytes=bytes;imageSha=sha;
+    blocked=sha!==APPROVED_SHA||!validFirmwareHeader(bytes)||BAD_HASHES.has(sha);
+    el('binInfo').textContent=`${file.name} · ${bytes.length} bytes · SHA-256 ${sha}`;
+    log('Loaded BIN: '+file.name+' ('+bytes.length+' bytes)');
+    if(blocked){log('REJECTED: file does not match the exact approved WIN 60 SE V0.1.0.1 firmware hash and header. No write is allowed.');}
+    else log('APPROVED FILE MATCH: exact official update-service SHA-256, size, header, and 8-byte board ID verified. Real hardware writing remains untested.');
+  }catch(e){blocked=true;el('binInfo').textContent='Could not prepare BIN: '+(e.message||e);log('File read failed: '+(e.message||e));}
+  canWrite();
+}
+
+async function flash(){
+  canWrite();if(el('flash').disabled)return;
+  const bytes=imageBytes,sha=imageSha;
+  disableWhileBusy(true);
+  let verified=false;
+  try{
+    // Confirm live identity again directly before the first potentially destructive command.
+    const live=await sync();
+    if(live.boardID!==EXPECTED_BOARD||live.runMode!==0)throw Error('Board ID or bootloader mode changed. Aborted before writing.');
+    if(sha!==hex(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))))throw Error('File changed; aborting.');
+    if(sha!==APPROVED_SHA||!validFirmwareHeader(bytes)||BAD_HASHES.has(sha)||blocked)throw Error('Firmware is not the exact approved WIN 60 SE image; writing denied.');
+    if(!el('confirmed').checked||el('typed').value.trim()!==`WRITE ${EXPECTED_BOARD}`)throw Error('Compatibility confirmation missing.');
+    log('Starting write. Do not unplug or close browser. Firmware bytes: '+bytes.length);
+    setProgress(0,bytes.length);
+    for(let offset=0;offset<bytes.length;offset+=58){
+      const chunk=bytes.subarray(offset,Math.min(offset+58,bytes.length));
+      const payload=new Uint8Array(58);payload.fill(255);payload.set(chunk);
+      const reply=await exchange(2,1,payload,10000);
+      const status=reply[3];
+      if(status!==0)throw Error('Firmware packet failed at byte '+offset+' (status '+status+': '+(STATUS[status]||'UNKNOWN')+').');
+      const done=Math.min(offset+58,bytes.length);
+      if(done===bytes.length||Math.floor(done/bytes.length*100)>el('progress').value)setProgress(done,bytes.length);
+    }
+    log('All packets acknowledged. Requesting firmware integrity / commit check...');
+    const check=await exchange(2,2,[],30000);
+    const status=check[3];
+    if(status!==0)throw Error('Firmware check failed (status '+status+': '+(STATUS[status]||'UNKNOWN')+'). Do NOT assume the application is valid.');
+    verified=true;
+    log('Firmware integrity check returned OK.');
+    if(el('reboot').checked){
+      log('Requesting reboot to application mode...');
+      try{
+        const response=await exchange(1,2,[1],3500);
+        log('Reboot command status: '+response[3]+'.');
+      }catch(e){log('Reboot request disconnected or timed out: '+(e.message||e)+'. This may be normal during USB reboot.');}
+    }
+    log('Writing finished. Reconnect keyboard and test keys and lights.');
+  }catch(e){log('STOPPED: '+(e.message||e));log('Firmware may be partially written if this occurred after writing started. Keep the existing bootloader available for recovery.');}
+  finally{disableWhileBusy(false);if(verified)el('confirmed').checked=false;canWrite();}
+}
+
+el('connect').addEventListener('click',askDevice);
+el('probe').addEventListener('click',probe);
+el('bin').addEventListener('change',readBin);
+el('confirmed').addEventListener('change',canWrite);
+el('typed').addEventListener('input',canWrite);
+el('flash').addEventListener('click',flash);
+el('save').addEventListener('click',()=>{
+  const blob=new Blob([writeLog.join('\n')+'\n'],{type:'text/plain'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='WIN60_SE_flash_log.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
+if('hid' in navigator)navigator.hid.addEventListener('disconnect',e=>{if(e.device===dev){log('USB device disconnected.');info=null;dev=null;el('probe').disabled=true;canWrite();}});
+</script>
+</body>
+</html>
